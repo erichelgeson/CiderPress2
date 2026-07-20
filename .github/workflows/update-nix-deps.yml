@@ -1,4 +1,4 @@
-name: Update Nix deps
+name: Update CiderPress & Nix deps
 
 on:
   schedule:
@@ -13,19 +13,48 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Bump upstream CiderPress pin (source.json)
+        run: |
+          set -euo pipefail
+          owner=$(jq -r .owner source.json)
+          repo=$(jq -r .repo source.json)
+          current=$(jq -r .rev source.json)
+
+          # Most recent published release, including pre-releases (dev builds).
+          latest=$(gh api "repos/$owner/$repo/releases" --jq '.[0].tag_name')
+          echo "current=$current latest=$latest"
+
+          if [ "$latest" = "$current" ]; then
+            echo "CiderPress is up to date ($current)."
+            exit 0
+          fi
+
+          url="https://github.com/$owner/$repo/archive/refs/tags/$latest.tar.gz"
+          base32=$(nix-prefetch-url --unpack "$url")
+          sri=$(nix hash to-sri --type sha256 "$base32")
+          version="${latest#v}"
+
+          jq --arg rev "$latest" --arg hash "$sri" --arg version "$version" \
+            '.rev = $rev | .hash = $hash | .version = $version' \
+            source.json > source.json.tmp && mv source.json.tmp source.json
+          echo "Bumped $repo: $current -> $latest"
 
       - name: Update flake.lock (nixpkgs)
         run: nix flake update
 
       - name: Regenerate deps.json (NuGet lockfile)
         run: |
+          set -euo pipefail
           nix build -L .#ciderpress2.fetch-deps -o fetch-deps
-          # The generated script defaults to a read-only store path under the
-          # pure flake eval, so pass the target explicitly.
+          # The generated script's default target is a read-only store path
+          # under pure flake eval, so pass an explicit writable path.
           ./fetch-deps "$PWD/deps.json"
           rm -f fetch-deps
 
@@ -35,16 +64,19 @@ jobs:
       - name: Open a pull request
         uses: peter-evans/create-pull-request@v6
         with:
-          commit-message: "Update Nix flake inputs and NuGet deps"
-          title: "Update Nix flake inputs and NuGet deps"
+          commit-message: "Update CiderPress pin and Nix inputs"
+          title: "Update CiderPress pin and Nix inputs"
           body: |
             Automated update of:
+            - `source.json` — pinned upstream CiderPress release (tag + hash + version)
             - `flake.lock` — nixpkgs input
             - `deps.json` — NuGet lockfile (regenerated via `passthru.fetch-deps`)
 
-            Verified with `nix build .#ciderpress2`.
-          branch: automated/nix-deps-update
+            Verified with `nix build .#ciderpress2`. A PR only appears when
+            something actually changed.
+          branch: automated/nix-update
           delete-branch: true
           add-paths: |
+            source.json
             flake.lock
             deps.json
