@@ -1,0 +1,24 @@
+name: Nix
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - name: nix flake check
+        run: nix flake check -L
+
+      - name: nix build
+        run: nix build -L .#ciderpress2
+
+      - name: Smoke-test the CLI
+        run: ./result/bin/cp2 version

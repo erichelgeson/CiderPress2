@@ -1,0 +1,50 @@
+name: Update Nix deps
+
+on:
+  schedule:
+    # Mondays, 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Update flake.lock (nixpkgs)
+        run: nix flake update
+
+      - name: Regenerate deps.json (NuGet lockfile)
+        run: |
+          nix build -L .#ciderpress2.fetch-deps -o fetch-deps
+          # The generated script defaults to a read-only store path under the
+          # pure flake eval, so pass the target explicitly.
+          ./fetch-deps "$PWD/deps.json"
+          rm -f fetch-deps
+
+      - name: Verify it still builds
+        run: nix build -L .#ciderpress2
+
+      - name: Open a pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "Update Nix flake inputs and NuGet deps"
+          title: "Update Nix flake inputs and NuGet deps"
+          body: |
+            Automated update of:
+            - `flake.lock` — nixpkgs input
+            - `deps.json` — NuGet lockfile (regenerated via `passthru.fetch-deps`)
+
+            Verified with `nix build .#ciderpress2`.
+          branch: automated/nix-deps-update
+          delete-branch: true
+          add-paths: |
+            flake.lock
+            deps.json
