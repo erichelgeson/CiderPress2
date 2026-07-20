@@ -86,9 +86,22 @@ buildDotnetModule (finalAttrs: {
     })
   ];
 
-  # The upstream app icon is a single 256x256 PNG-based .ico; drop it into the
-  # hicolor theme so the desktop entry has an icon.
   postInstall = ''
+    # LegalStuff.txt is read at runtime by the GUI's About box, which looks for
+    # it next to the executable (AppContext.BaseDirectory).  Upstream's release
+    # bundle ships it alongside the binaries, so mirror that here.
+    install -Dm644 "${finalAttrs.src}/LegalStuff.txt" \
+      "$out/lib/${finalAttrs.pname}/LegalStuff.txt"
+
+    # Documentation that upstream packs into the release archive.
+    install -Dm644 \
+      "${finalAttrs.src}/ndocs/top/README.md" \
+      "${finalAttrs.src}/docs/Manual-cp2.md" \
+      "${finalAttrs.src}/Pkg/sample.cp2rc" \
+      -t "$out/share/doc/${finalAttrs.pname}"
+
+    # The upstream app icon is a single 256x256 PNG-based .ico; drop it into the
+    # hicolor theme so the desktop entry has an icon.
     install -d "$out/share/icons/hicolor/256x256/apps"
     magick "${finalAttrs.src}/cp2_avalonia/Res/cp2_app.ico" \
       "$out/share/icons/hicolor/256x256/apps/ciderpress2.png"
