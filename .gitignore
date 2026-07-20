@@ -411,3 +411,8 @@ FodyWeavers.xsd
 *.sln.iml
 *.idea
 .idea
+
+# Nix build outputs
+/result
+/result-*
+/fetch-deps-result
